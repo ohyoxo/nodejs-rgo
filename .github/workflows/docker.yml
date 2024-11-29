@@ -1,37 +1,36 @@
-name: Docker Build and Push
+name: Docker Image CI
 
 on:
-  # 手动触发
-  workflow_dispatch:
-  # 推送到main分支时触发
   push:
     branches: [ "main" ]
-    paths-ignore:
-      - '**.md'
-      - '.gitignore'
+  # 添加手动触发选项
+  workflow_dispatch:
 
 env:
-  # 使用当前时间戳和随机字符串生成唯一的镜像标签
-  IMAGE_TAG: ${{ github.sha }}_${{ github.run_number }}_${{ github.run_attempt }}
+  # 设置镜像名称
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # 登录到 GitHub Container Registry
-      - name: Login to GitHub Container Registry
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 登录到 Docker Hub
-      - name: Login to Docker Hub
+      # 登录到 DockerHub
+      - name: Log in to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -41,12 +40,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 生成随机镜像名称
-      - name: Generate random image name
-        id: random-name
-        run: |
-          RANDOM_NAME=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 8 | head -n 1)
-          echo "RANDOM_NAME=${RANDOM_NAME}" >> $GITHUB_ENV
+      # 提取元数据（tags, labels）
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+          tags: |
+            type=raw,value=latest
 
       # 构建并推送镜像
       - name: Build and push
@@ -54,18 +57,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/${{ env.RANDOM_NAME }}:${{ env.IMAGE_TAG }}
-            ghcr.io/${{ github.repository_owner }}/${{ env.RANDOM_NAME }}:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.RANDOM_NAME }}:${{ env.IMAGE_TAG }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.RANDOM_NAME }}:latest
-          # 使用缓存来加速构建
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # 多平台构建
-          platforms: linux/amd64,linux/arm64
-          # 优化构建以减小镜像大小
-          build-args: |
-            NODE_ENV=production
-          # 使用提供的Dockerfile
-          file: ./Dockerfile
