@@ -1,22 +1,18 @@
 name: Docker Build and Push
 
 on:
+  # 手动触发
   workflow_dispatch:
-    inputs:
-      image_tag:
-        description: 'Docker image tag'
-        required: true
-        default: 'latest'
-  
+  # 推送到main分支时触发
   push:
-    branches: [ main ]
+    branches: [ "main" ]
     paths-ignore:
       - '**.md'
-      - 'docs/**'
+      - '.gitignore'
 
 env:
-  DOCKER_HUB_REPOSITORY: ${{ github.repository }}
-  GHCR_REPOSITORY: ${{ github.repository }}
+  # 使用当前时间戳和随机字符串生成唯一的镜像标签
+  IMAGE_TAG: ${{ github.sha }}_${{ github.run_number }}_${{ github.run_attempt }}
 
 jobs:
   build-and-push:
@@ -26,107 +22,50 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      
+      # 登录到 GitHub Container Registry
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Detect project type and prepare Dockerfile
-        id: detect
+
+      # 登录到 Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 设置 Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 生成随机镜像名称
+      - name: Generate random image name
+        id: random-name
         run: |
-          if [ -f "package.json" ]; then
-            echo "PROJECT_TYPE=nodejs" >> $GITHUB_ENV
-            cat > Dockerfile << 'EOL'
-          # 构建阶段
-          FROM node:alpine AS builder
-          WORKDIR /app
-          COPY package*.json ./
-          RUN npm install
-          COPY . .
-          
-          # 可选: 如果需要构建
-          # RUN npm run build
-          
-          # 生产阶段
-          FROM node:alpine
-          WORKDIR /app
-          
-          # 安装必要的系统依赖
-          RUN apk update && apk upgrade && \
-              apk add --no-cache openssl curl gcompat iproute2 coreutils bash && \
-              rm -rf /var/cache/apk/*
-          
-          # 仅复制生产环境需要的文件
-          COPY --from=builder /app/package*.json ./
-          COPY --from=builder /app/node_modules ./node_modules
-          COPY --from=builder /app/index.js ./
-          
-          # 如果有构建产物，则使用这行
-          # COPY --from=builder /app/dist ./dist
-          
-          RUN chmod +x index.js
-          
-          EXPOSE 3000
-          CMD ["node", "index.js"]
-          EOL
-          elif [ -f "requirements.txt" ]; then
-            echo "PROJECT_TYPE=python" >> $GITHUB_ENV
-            cat > Dockerfile << 'EOL'
-          # 构建阶段
-          FROM python:3.9-alpine AS builder
-          WORKDIR /app
-          
-          # 安装构建依赖
-          COPY requirements.txt .
-          RUN apk add --no-cache --virtual .build-deps gcc musl-dev python3-dev && \
-              pip install --no-cache-dir -r requirements.txt && \
-              apk del .build-deps
-          
-          # 生产阶段
-          FROM python:3.9-alpine
-          WORKDIR /app
-          
-          # 安装运行时依赖
-          RUN apk update && apk upgrade && \
-              apk add --no-cache openssl curl bash && \
-              rm -rf /var/cache/apk/*
-          
-          # 复制虚拟环境和应用代码
-          COPY --from=builder /usr/local/lib/python3.9/site-packages/ /usr/local/lib/python3.9/site-packages/
-          COPY . .
-          
-          EXPOSE 5000
-          CMD ["python", "app.py"]
-          EOL
-          else
-            echo "No supported project type detected"
-            exit 1
-          fi
-      
+          RANDOM_NAME=$(cat /dev/urandom | tr -dc 'a-z0-9' | fold -w 8 | head -n 1)
+          echo "RANDOM_NAME=${RANDOM_NAME}" >> $GITHUB_ENV
+
+      # 构建并推送镜像
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            docker.io/${{ env.DOCKER_HUB_REPOSITORY }}:${{ github.event.inputs.image_tag || 'latest' }}
-            docker.io/${{ env.DOCKER_HUB_REPOSITORY }}:${{ github.sha }}
-            ghcr.io/${{ env.GHCR_REPOSITORY }}:${{ github.event.inputs.image_tag || 'latest' }}
-            ghcr.io/${{ env.GHCR_REPOSITORY }}:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/${{ env.RANDOM_NAME }}:${{ env.IMAGE_TAG }}
+            ghcr.io/${{ github.repository_owner }}/${{ env.RANDOM_NAME }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.RANDOM_NAME }}:${{ env.IMAGE_TAG }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.RANDOM_NAME }}:latest
+          # 使用缓存来加速构建
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # 多平台构建
+          platforms: linux/amd64,linux/arm64
+          # 优化构建以减小镜像大小
+          build-args: |
+            NODE_ENV=production
+          # 使用提供的Dockerfile
+          file: ./Dockerfile
