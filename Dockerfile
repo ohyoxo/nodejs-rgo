@@ -1,12 +1,12 @@
 # 构建阶段
-FROM node:18-alpine as builder
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
 # 复制 package.json
 COPY package*.json ./
 
-# 使用 npm install 替代 npm ci
+# 使用 npm install
 RUN npm install --production
 
 # 复制源代码
@@ -22,7 +22,7 @@ RUN apk update && apk upgrade && \
 
 WORKDIR /app
 
-# 从构建阶段复制 node_modules 和其他必要文件
+# 从构建阶段复制文件
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/index.js ./
 COPY --from=builder /app/package.json ./
