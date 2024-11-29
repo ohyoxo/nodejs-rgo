@@ -1,19 +1,19 @@
 # 构建阶段
-FROM node:alpine as builder
+FROM node:18-alpine as builder
 
 WORKDIR /app
 
-# 首先只复制 package.json 和 package-lock.json
+# 复制 package.json
 COPY package*.json ./
 
-# 安装依赖
-RUN npm ci --only=production
+# 使用 npm install 替代 npm ci
+RUN npm install --production
 
 # 复制源代码
 COPY . .
 
 # 生产阶段
-FROM node:alpine
+FROM node:18-alpine
 
 # 安装必要的系统依赖
 RUN apk update && apk upgrade && \
