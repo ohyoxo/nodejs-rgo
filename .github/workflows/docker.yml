@@ -1,14 +1,15 @@
-name: Docker Image CI
+name: Docker Build and Publish
 
 on:
   push:
-    branches: [ "main" ]
-  # 添加手动触发选项
+    branches: [ "main", "master" ]
+  # 启用手动触发
   workflow_dispatch:
 
 env:
-  # 设置镜像名称
-  IMAGE_NAME: ${{ github.repository }}
+  # 设置 Docker Hub 和 GitHub Container Registry 的镜像名称
+  DOCKER_HUB_IMAGE: ${{ github.repository }}
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -21,6 +22,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 登录到 Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       # 登录到 GitHub Container Registry
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -29,35 +37,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 登录到 DockerHub
-      - name: Log in to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       # 设置 Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 提取元数据（tags, labels）
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ghcr.io/${{ github.repository }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
-          tags: |
-            type=raw,value=latest
-
-      # 构建并推送镜像
-      - name: Build and push
+      # 构建并推送 Docker 镜像
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ env.DOCKER_HUB_IMAGE }}:latest
+            ${{ env.GHCR_IMAGE }}:latest
+          # 使用多阶段构建和缓存来优化镜像大小
           cache-from: type=gha
           cache-to: type=gha,mode=max
