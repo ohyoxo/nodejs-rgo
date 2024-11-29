@@ -3,13 +3,12 @@ name: Docker Build and Publish
 on:
   push:
     branches: [ "main", "master" ]
-  # 启用手动触发
   workflow_dispatch:
 
 env:
-  # 设置 Docker Hub 和 GitHub Container Registry 的镜像名称
-  DOCKER_HUB_IMAGE: ${{ github.repository }}
-  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+  # 确保使用完整的镜像名称，包含组织/用户名
+  DOCKER_HUB_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/docker-rgo
+  GHCR_REPO: ghcr.io/${{ github.repository }}
 
 jobs:
   build-and-push:
@@ -48,8 +47,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.DOCKER_HUB_IMAGE }}:latest
-            ${{ env.GHCR_IMAGE }}:latest
-          # 使用多阶段构建和缓存来优化镜像大小
+            ${{ env.DOCKER_HUB_REPO }}:latest
+            ${{ env.GHCR_REPO }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
