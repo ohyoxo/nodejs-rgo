@@ -1,10 +1,10 @@
 {
-  "name": "nodejs-argo",
+  "name": "nodejs-2go",
   "version": "8.8.8",
   "description": "Thsi is a node project",
   "main": "index.js",
-  "author": "eooce",
-  "repository": "https://github.com/eooce/nodejs-argo",
+  "author": "ohyoxo",
+  "repository": "https://github.com/ohyoxo/nodejs-2go",
   "license": "MIT",
   "private": false,
   "scripts": {
